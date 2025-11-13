@@ -5,12 +5,17 @@ import json
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address & Map")
 
+# Placeholder to display the map
+map_placeholder = st.empty()
+
 # HTML + JS to detect location and reverse geocode
 gps_html = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
 </div>
+
+<input type="hidden" id="coords_json">
 
 <script>
 async function getLocation() {
@@ -39,74 +44,50 @@ async function getLocation() {
 
         status.innerHTML = `<b>Detected:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
 
-        // Send coordinates + address to Streamlit
-        const message = {lat: lat, lon: lon, address: address};
-        window.parent.postMessage({isStreamlitMessage: true, data: message}, "*");
+        // Store coordinates + address in hidden input
+        const coordsEl = document.getElementById("coords_json");
+        coordsEl.value = JSON.stringify({lat: lat, lon: lon, address: address});
+        coordsEl.dispatchEvent(new Event('input', { bubbles: true }));
     }, (err) => {
         status.innerHTML = "Error: " + err.message;
     }, {enableHighAccuracy:true, timeout:20000});
 }
 </script>
-<input type="hidden" id="coords_json">
 """
 
-# Embed the GPS detector
+# Render the JS + HTML
 components.html(gps_html, height=150)
 
-# JS listener to fill hidden input
-components.html("""
-<script>
-window.addEventListener("message", (event) => {
-    if(event.data && event.data.isStreamlitMessage){
-        const loc = event.data.data;
-        const coordsEl = document.getElementById("coords_json");
-        coordsEl.value = JSON.stringify(loc);
-        coordsEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-});
-</script>
-<input type="text" id="coords_input" style="display:none;">
-""", height=0)
-
-# Streamlit input that receives the JS data
-coords_json = st.text_input("coords_input", "")
-
-# Store latest location in session state
-if "latest_location" not in st.session_state:
-    st.session_state["latest_location"] = None
+# Hidden input that JS fills
+coords_json = st.text_input("coords_json", "")
 
 if coords_json:
     try:
-        loc_data = json.loads(coords_json)
-        st.session_state["latest_location"] = loc_data
-    except:
-        pass
+        loc = json.loads(coords_json)
+        lat = loc["lat"]
+        lon = loc["lon"]
+        address = loc["address"]
 
-# Display the latest detected location and Leaflet map
-if st.session_state["latest_location"]:
-    loc = st.session_state["latest_location"]
-    lat = loc["lat"]
-    lon = loc["lon"]
-    address = loc["address"]
+        st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}")
+        st.success(f"✅ Address: {address}")
 
-    st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}\n✅ Address: {address}")
+        # Leaflet map HTML
+        map_html = f"""
+        <div id="map" style="height:500px; width:100%; margin-top:10px;"></div>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+        var map = L.map('map').setView([{lat}, {lon}], 16);
+        L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors'
+        }}).addTo(map);
+        L.marker([{lat}, {lon}]).addTo(map)
+            .bindPopup("📍 You are here<br>{address}")
+            .openPopup();
+        </script>
+        """
+        map_placeholder.components.html(map_html, height=500)
 
-    # Leaflet map
-    map_html = f"""
-    <div id="map" style="height:500px; width:100%; margin-top:10px;"></div>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-    var map = L.map('map').setView([{lat}, {lon}], 16);
-    L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-    }}).addTo(map);
-    L.marker([{lat}, {lon}]).addTo(map)
-        .bindPopup("📍 You are here<br>{address}")
-        .openPopup();
-    </script>
-    """
-
-    # Render the map using st.components.v1.html
-    components.html(map_html, height=500)
+    except Exception as e:
+        st.warning(f"⚠️ Error: {e}")
