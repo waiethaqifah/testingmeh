@@ -1,35 +1,34 @@
 import streamlit as st
+from streamlit_geolocation import geolocation
 from geopy.geocoders import Nominatim
-import folium
 from streamlit_folium import st_folium
+import folium
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
-st.title("📍 GPS Tracker with Address & Map")
+st.title("📍 GPS Tracker with Address")
 
-# Detect location automatically
-user_location = geolocation(timeout=10)
+# Get the current location
+location = geolocation(timeout=20)  # waits up to 20 seconds
 
-if user_location:
-    lat = user_location["lat"]
-    lon = user_location["lon"]
-    st.success(f"📍 Detected Coordinates: {lat:.6f}, {lon:.6f}")
+if location is None:
+    st.warning("⚠️ Location not detected yet. Make sure you allow location access.")
+else:
+    lat = location["latitude"]
+    lon = location["longitude"]
+    st.success(f"📍 Coordinates detected: {lat:.6f}, {lon:.6f}")
 
-    # Reverse geocode to get address
+    # Reverse geocode
     try:
         geolocator = Nominatim(user_agent="gps_app")
-        location = geolocator.reverse((lat, lon), language="en")
-        if location and location.address:
-            st.success(f"🏠 Address: {location.address}")
+        loc = geolocator.reverse((lat, lon), language="en")
+        if loc and loc.address:
+            st.success(f"🏠 Address: {loc.address}")
         else:
             st.warning("⚠️ Could not retrieve address from coordinates.")
     except Exception as e:
         st.warning(f"⚠️ Error: {e}")
 
-    # Show map with marker
+    # Display map with marker
     m = folium.Map(location=[lat, lon], zoom_start=16)
-    folium.Marker([lat, lon], tooltip="You are here", popup=f"Address:\n{location.address}").add_to(m)
-    st_folium(m, width=700, height=500)
-
-else:
-    st.info("⚠️ Location not detected. Make sure you allow location access in your browser.")
-
+    folium.Marker([lat, lon], popup="📍 You are here").add_to(m)
+    st_folium(m, width=700, height=450)
