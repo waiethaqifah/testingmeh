@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 from geopy.geocoders import Nominatim
 import streamlit.components.v1 as components
@@ -22,16 +21,16 @@ gps_html = f"""
 
 <script>
 async function getLocation() {{
-    const status = document.getElementById("status");
+    var status = document.getElementById("status");
     if (!navigator.geolocation) {{
         status.innerHTML = "Geolocation not supported.";
         return;
     }}
-    navigator.geolocation.getCurrentPosition(async (pos) => {{
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const acc = pos.coords.accuracy;
-        status.innerHTML = `Latitude: ${lat.toFixed(6)}, Longitude: ${lon.toFixed(6)} (Accuracy ±${acc} m)`;
+    navigator.geolocation.getCurrentPosition(async function(pos) {{
+        var lat = pos.coords.latitude;
+        var lon = pos.coords.longitude;
+        var acc = pos.coords.accuracy;
+        status.innerHTML = "Latitude: " + lat.toFixed(6) + ", Longitude: " + lon.toFixed(6) + " (Accuracy ±" + acc + " m)";
 
         // Show map
         var map = L.map('map').setView([lat, lon], 16);
@@ -52,7 +51,7 @@ async function getLocation() {{
             body: JSON.stringify({{lat: lat, lon: lon}})
         }});
     }},
-    (err) => {{ status.innerHTML = "Error: " + err.message; }},
+    function(err) {{ status.innerHTML = "Error: " + err.message; }},
     {{enableHighAccuracy:true, timeout:20000}});
 }}
 </script>
