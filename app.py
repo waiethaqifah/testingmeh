@@ -86,10 +86,10 @@ import os
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
-COORD_FILE = "coords.txt"  # only one file, plain text
+COORD_FILE = "coords.txt"  # plain text
 
-# HTML + JS to get location and write to file via Streamlit hack
-gps_html = f"""
+# HTML + JS to get location and send to hidden input
+gps_html = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
@@ -100,14 +100,14 @@ gps_html = f"""
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-function getLocation() {{
+function getLocation() {
     const status = document.getElementById('status');
-    if (!navigator.geolocation) {{
+    if (!navigator.geolocation) {
         status.innerHTML = "Geolocation not supported by this browser.";
         return;
-    }}
+    }
     navigator.geolocation.getCurrentPosition(
-        (pos) => {{
+        (pos) => {
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             const acc = pos.coords.accuracy;
@@ -116,46 +116,62 @@ function getLocation() {{
 
             // Show map
             var map = L.map('map').setView([lat, lon], 16);
-            L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; OpenStreetMap contributors'
-            }}).addTo(map);
+            }).addTo(map);
             L.marker([lat, lon]).addTo(map)
                 .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
                 .openPopup();
 
-            // Send coordinates to Streamlit via textarea hack
+            // Send coordinates to Streamlit hidden input
             const coordsInput = window.parent.document.getElementById("coords_input");
-            if (coordsInput) {{
+            if (coordsInput) {
                 coordsInput.value = lat + "," + lon;
-                coordsInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            }}
-        }},
-        (err) => {{ status.innerHTML = "Error: " + err.message; }},
-        {{ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }}
+                coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        },
+        (err) => { status.innerHTML = "Error: " + err.message; },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
-}}
+}
 </script>
 
 <input type="text" id="coords_input" style="display:none;">
 """
 
-# Embed HTML
 components.html(gps_html, height=500)
 
-# Read coordinates from hidden text input
+# Read from hidden input
 coords = st.text_input("coords_input", "")
 
-if coords:
+def parse_coords(text):
+    if not text.strip():  # kosong
+        return None, None
     try:
-        lat, lon = map(float, coords.split(","))
-        # Save to file
-        with open(COORD_FILE, "w") as f:
-            f.write(f"{lat},{lon}")
+        lat, lon = map(float, text.strip().split(","))
+        return lat, lon
+    except:
+        return None, None
 
-        st.info(f"📍 Detected coordinates: {lat:.6f}, {lon:.6f}")
+lat, lon = parse_coords(coords)
 
-        # Reverse geocode
+# If got from input, save to file
+if lat is not None and lon is not None:
+    with open(COORD_FILE, "w") as f:
+        f.write(f"{lat},{lon}")
+
+# If no input, try read from file safely
+if lat is None or lon is None:
+    if os.path.exists(COORD_FILE):
+        with open(COORD_FILE, "r") as f:
+            file_text = f.read().strip()
+            lat, lon = parse_coords(file_text)
+
+# If we have valid coordinates, reverse geocode
+if lat is not None and lon is not None:
+    st.info(f"📍 Detected coordinates: {lat:.6f}, {lon:.6f}")
+    try:
         geolocator = Nominatim(user_agent="gps_tracker_app")
         location = geolocator.reverse((lat, lon), language="en")
         if location and location.address:
@@ -165,19 +181,4 @@ if coords:
     except Exception as e:
         st.error(f"⚠️ Error: {e}")
 else:
-    # Try read from file if exists
-    if os.path.exists(COORD_FILE):
-        try:
-            with open(COORD_FILE, "r") as f:
-                lat, lon = map(float, f.read().split(","))
-            st.info(f"📍 Retrieved coordinates from file: {lat:.6f}, {lon:.6f}")
-            geolocator = Nominatim(user_agent="gps_tracker_app")
-            location = geolocator.reverse((lat, lon), language="en")
-            if location and location.address:
-                st.success(f"✅ Final Location: {location.address}")
-            else:
-                st.warning("⚠️ Could not retrieve address from coordinates.")
-        except Exception as e:
-            st.error(f"⚠️ Error reading coordinates from file: {e}")
-    else:
-        st.info("⚠️ Location not detected yet. Click the button above first.")
+    st.info("⚠️ Location not detected yet. Click the button above first.")
