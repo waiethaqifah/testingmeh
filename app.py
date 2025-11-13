@@ -3,7 +3,7 @@ import streamlit.components.v1 as components
 import json
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
-st.title("📍 GPS Tracker with Address")
+st.title("📍 GPS Tracker with Address & Map")
 
 # Container to show detected info
 detected_container = st.empty()
@@ -57,17 +57,6 @@ async function getLocation() {
 components.html(gps_html, height=150)
 
 # JS sends data here
-message = st.experimental_get_query_params().get("location_data")
-
-# Use Streamlit to listen to postMessage
-# workaround using Streamlit session state to store the latest location
-if "latest_location" not in st.session_state:
-    st.session_state["latest_location"] = None
-
-# This part updates when JS sends message
-st.write("Click the button above to detect your location. The map and address will show below:")
-
-# We need a small hack using components.html to catch the postMessage
 components.html("""
 <script>
 window.addEventListener("message", (event) => {
@@ -85,6 +74,10 @@ window.addEventListener("message", (event) => {
 # Hidden input to capture JS message
 coords_json = st.text_input("coords_input", "")
 
+# Store latest location in session state
+if "latest_location" not in st.session_state:
+    st.session_state["latest_location"] = None
+
 if coords_json:
     try:
         loc_data = json.loads(coords_json)
@@ -92,7 +85,7 @@ if coords_json:
     except:
         pass
 
-# Show the latest detected location
+# Show the latest detected location and Leaflet map
 if st.session_state["latest_location"]:
     loc = st.session_state["latest_location"]
     lat = loc["lat"]
@@ -101,9 +94,9 @@ if st.session_state["latest_location"]:
 
     detected_container.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}\n✅ Address: {address}")
 
-    # Show map using leaflet
+    # Show Leaflet map
     map_html = f"""
-    <div id="map" style="height:400px; width:100%; margin-top:10px;"></div>
+    <div id="map" style="height:500px; width:100%; margin-top:10px;"></div>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
@@ -117,4 +110,4 @@ if st.session_state["latest_location"]:
         .openPopup();
     </script>
     """
-    map_container.components.html(map_html, height=450)
+    map_container.components.html(map_html, height=500)
