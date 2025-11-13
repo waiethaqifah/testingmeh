@@ -79,18 +79,17 @@ if click_btn:
         st.warning(f"⚠️ Error: {e}")
 '''
 import streamlit as st
-import streamlit.components.v1 as components
 from geopy.geocoders import Nominatim
+import streamlit.components.v1 as components
 import os
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
-# Path to store coordinates
-coords_file = "coords.txt"
+COORD_FILE = "coords.txt"  # only one file, plain text
 
-# HTML + JS to get current location and update input
-gps_html = """
+# HTML + JS to get location and write to file via Streamlit hack
+gps_html = f"""
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
@@ -101,14 +100,14 @@ gps_html = """
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
-function getLocation() {
+function getLocation() {{
     const status = document.getElementById('status');
-    if (!navigator.geolocation) {
+    if (!navigator.geolocation) {{
         status.innerHTML = "Geolocation not supported by this browser.";
         return;
-    }
+    }}
     navigator.geolocation.getCurrentPosition(
-        function(pos) {
+        (pos) => {{
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             const acc = pos.coords.accuracy;
@@ -117,53 +116,61 @@ function getLocation() {
 
             // Show map
             var map = L.map('map').setView([lat, lon], 16);
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
                 maxZoom: 19,
                 attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
+            }}).addTo(map);
             L.marker([lat, lon]).addTo(map)
                 .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
                 .openPopup();
 
-            // Save coords to local file via Streamlit input
-            const input = window.parent.document.querySelector('input[id="coords_input"]');
-            if (input) {
-                input.value = lat + "," + lon;
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-        },
-        function(err) { status.innerHTML = "Error: " + err.message; },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+            // Send coordinates to Streamlit via textarea hack
+            const coordsInput = window.parent.document.getElementById("coords_input");
+            if (coordsInput) {{
+                coordsInput.value = lat + "," + lon;
+                coordsInput.dispatchEvent(new Event('input', {{ bubbles: true }}));
+            }}
+        }},
+        (err) => {{ status.innerHTML = "Error: " + err.message; }},
+        {{ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }}
     );
-}
+}}
 </script>
 
 <input type="text" id="coords_input" style="display:none;">
 """
 
-# Embed the HTML
+# Embed HTML
 components.html(gps_html, height=500)
 
-# Hidden input to catch JS coordinates
-coords_input = st.text_input("", key="coords_input", label_visibility="collapsed")
+# Read coordinates from hidden text input
+coords = st.text_input("coords_input", "")
 
-# If coordinates exist from JS, store to file
-if coords_input:
-    with open(coords_file, "w") as f:
-        f.write(coords_input)
+if coords:
+    try:
+        lat, lon = map(float, coords.split(","))
+        # Save to file
+        with open(COORD_FILE, "w") as f:
+            f.write(f"{lat},{lon}")
 
-# If file exists, read coordinates
-if os.path.exists(coords_file):
-    with open(coords_file, "r") as f:
-        content = f.read().strip()
-    if content:
+        st.info(f"📍 Detected coordinates: {lat:.6f}, {lon:.6f}")
+
+        # Reverse geocode
+        geolocator = Nominatim(user_agent="gps_tracker_app")
+        location = geolocator.reverse((lat, lon), language="en")
+        if location and location.address:
+            st.success(f"✅ Final Location: {location.address}")
+        else:
+            st.warning("⚠️ Could not retrieve address from coordinates.")
+    except Exception as e:
+        st.error(f"⚠️ Error: {e}")
+else:
+    # Try read from file if exists
+    if os.path.exists(COORD_FILE):
         try:
-            lat_str, lon_str = content.split(",")[:2]
-            lat = float(lat_str)
-            lon = float(lon_str)
-            st.info(f"📍 Detected coordinates: {lat:.6f}, {lon:.6f}")
-
-            # Reverse geocode
+            with open(COORD_FILE, "r") as f:
+                lat, lon = map(float, f.read().split(","))
+            st.info(f"📍 Retrieved coordinates from file: {lat:.6f}, {lon:.6f}")
             geolocator = Nominatim(user_agent="gps_tracker_app")
             location = geolocator.reverse((lat, lon), language="en")
             if location and location.address:
@@ -171,6 +178,6 @@ if os.path.exists(coords_file):
             else:
                 st.warning("⚠️ Could not retrieve address from coordinates.")
         except Exception as e:
-            st.error(f"⚠️ Error parsing coordinates: {e}")
-else:
-    st.info("⚠️ Location not detected yet. Click the button above first.")
+            st.error(f"⚠️ Error reading coordinates from file: {e}")
+    else:
+        st.info("⚠️ Location not detected yet. Click the button above first.")
