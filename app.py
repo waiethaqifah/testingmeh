@@ -9,33 +9,27 @@ st.title("📍 GPS Tracker with Address")
 
 COORDS_FILE = "coords.json"
 
-# --- Functions to read/store coordinates safely ---
 def read_coords():
     if os.path.exists(COORDS_FILE):
         try:
             with open(COORDS_FILE, "r") as f:
-                content = f.read().strip()
-                if content:
-                    data = json.loads(content)
-                    if isinstance(data, list):
-                        return data
-        except Exception as e:
-            st.warning(f"⚠️ Could not read coordinates from file: {e}")
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except:
+            pass
     return []
 
 def store_coords(lat, lon):
     coords_list = read_coords()
     coords_list.append({"lat": lat, "lon": lon})
-    try:
-        with open(COORDS_FILE, "w") as f:
-            json.dump(coords_list, f, indent=2)
-    except Exception as e:
-        st.warning(f"⚠️ Could not store coordinates: {e}")
+    with open(COORDS_FILE, "w") as f:
+        json.dump(coords_list, f, indent=2)
 
-# --- JavaScript to detect location and send to Streamlit ---
+# --- HTML + JS for automatic location detection ---
 gps_html = """
 <div style="text-align:center;">
-    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
+    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
     <div id="map" style="height:400px; width:100%; margin-top:10px;"></div>
 </div>
@@ -47,7 +41,7 @@ gps_html = """
 function getLocation() {
     const status = document.getElementById('status');
     if (!navigator.geolocation) {
-        status.innerHTML = "Geolocation not supported by this browser.";
+        status.innerHTML = "Geolocation not supported.";
         return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -67,23 +61,25 @@ function getLocation() {
                 .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
                 .openPopup();
 
-            // Send coordinates to Streamlit via hidden input
-            const input = document.getElementById('coords_input');
-            input.value = lat + "," + lon;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
+            // Automatically send coordinates to Streamlit hidden input
+            const coordsInput = document.getElementById("coords_input");
+            coordsInput.value = lat + "," + lon;
+            coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
         },
         (err) => { status.innerHTML = "Error: " + err.message; },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
 }
 </script>
+
 <input type="text" id="coords_input" style="display:none;">
 """
 
+# Embed JS
 components.html(gps_html, height=500)
 
-# --- Streamlit reads coordinates from the hidden input ---
-coords = st.text_input("Hidden GPS input", value="", key="coords_hidden")
+# Streamlit reads coordinates from the hidden input
+coords = st.text_input("", value="", key="coords_hidden", label_visibility="collapsed")
 
 if coords:
     try:
@@ -91,12 +87,12 @@ if coords:
         lat = float(lat_str)
         lon = float(lon_str)
 
-        # Store into coords.json
+        # Store coords automatically
         store_coords(lat, lon)
 
         st.success(f"📍 Coordinates detected: {lat:.6f}, {lon:.6f}")
 
-        # Reverse geocode to get address
+        # Reverse geocode address
         geolocator = Nominatim(user_agent="streamlit_gps_app")
         location = geolocator.reverse((lat, lon), language="en")
         if location and location.address:
@@ -105,14 +101,12 @@ if coords:
         else:
             st.warning("⚠️ Could not retrieve address from coordinates.")
 
-        # Display map again using Leaflet (optional)
-        st.write(f"**Latitude:** {lat}, **Longitude:** {lon}")
     except Exception as e:
         st.warning(f"⚠️ Error processing coordinates: {e}")
 else:
-    st.info("⚠️ Location not detected yet. Click the button in the map first.")
+    st.info("⚠️ Location not detected yet. Click the button above in the map.")
 
-# --- Display previous coordinates stored ---
+# Display previous locations
 all_coords = read_coords()
 if all_coords:
     st.subheader("📜 Previous detected locations:")
