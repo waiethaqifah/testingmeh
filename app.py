@@ -95,13 +95,14 @@ from streamlit_folium import st_folium
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Map and Address")
 
-# Hidden Streamlit text_input that JS can write to
-if "coords_json" not in st.session_state:
-    st.session_state.coords_json = ""
+# Initialize session state
+if "coords" not in st.session_state:
+    st.session_state.coords = None
 
-coords_input = st.text_input("coords_json", value=st.session_state.coords_json, key="coords_json", label_visibility="collapsed")
+# Hidden input (collapsed)
+coords_input = st.text_input("coords_json", value="", label_visibility="collapsed")
 
-# JS code to get geolocation and fill hidden input
+# JS code
 js_code = """
 <div style="text-align:center; margin-bottom:10px;">
   <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
@@ -129,7 +130,7 @@ async function getLocation() {
 
     status.innerHTML = `<b>Coordinates:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
 
-    // Send coordinates to Streamlit text_input
+    // Send data back to Streamlit
     const input = window.parent.document.querySelector('input[id="coords_json"]');
     input.value = JSON.stringify({lat: lat, lon: lon, address: address});
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -140,20 +141,22 @@ async function getLocation() {
 
 st.components.v1.html(js_code, height=150)
 
-# Render map if coordinates exist
-if st.session_state.coords_json:
+# Detect when the input changes and update session_state
+if coords_input:
     try:
-        loc = json.loads(st.session_state.coords_json)
+        loc = json.loads(coords_input)
+        st.session_state.coords = loc
+
         lat, lon, address = loc["lat"], loc["lon"], loc["address"]
 
         st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}")
         st.success(f"✅ Address: {address}")
 
-        # Save to a JSON file
+        # Save to file immediately
         with open("coords.json", "w") as f:
-            json.dump({"lat": lat, "lon": lon, "address": address}, f, indent=4)
+            json.dump(loc, f, indent=4)
 
-        # Folium map
+        # Display folium map
         m = folium.Map(location=[lat, lon], zoom_start=16)
         folium.Marker([lat, lon], popup=f"📍 You are here\n{address}").add_to(m)
         st_folium(m, width=700, height=500)
@@ -161,3 +164,12 @@ if st.session_state.coords_json:
     except Exception as e:
         st.warning(f"⚠️ Error parsing coordinates: {e}")
 
+# Optional: Load previous location on start
+import os
+if st.session_state.coords is None and os.path.exists("coords.json"):
+    try:
+        with open("coords.json") as f:
+            st.session_state.coords = json.load(f)
+            st.success(f"Loaded last location from file.")
+    except:
+        pass
