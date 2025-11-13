@@ -1,90 +1,120 @@
 import streamlit as st
-from geopy.geocoders import Nominatim
 import streamlit.components.v1 as components
-import folium
-from streamlit_folium import st_folium
 import json
-import os
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
-# Path to store coordinates
-COORDS_FILE = "coords.json"
+# Container to show detected info
+detected_container = st.empty()
+map_container = st.empty()
 
-# --- Embed HTML + JS to get browser location ---
+# HTML + JS to detect location and reverse geocode in the browser
 gps_html = """
 <div style="text-align:center;">
-    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
+    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
 </div>
 
 <script>
-function getLocation() {
+async function getLocation() {
     const status = document.getElementById('status');
     if (!navigator.geolocation) {
-        status.innerHTML = "Geolocation not supported by your browser.";
+        status.innerHTML = "Geolocation not supported by this browser.";
         return;
     }
-    navigator.geolocation.getCurrentPosition(
-        (pos) => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            const acc = pos.coords.accuracy;
 
-            status.innerHTML = `Latitude: ${lat.toFixed(6)}, Longitude: ${lon.toFixed(6)} (Accuracy ±${acc} m)`;
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
 
-            // Store coordinates in a JSON file via Streamlit
-            const coords = {lat: lat, lon: lon};
-            const jsonStr = JSON.stringify(coords);
-            fetch("/_stcore/file/", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: jsonStr
-            });
+        // Reverse geocode using Nominatim (directly in browser)
+        let address = "Unknown";
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data && data.display_name) {
+                address = data.display_name;
+            }
+        } catch (e) {
+            address = "Could not retrieve address";
+        }
 
-            // Send coordinates to Streamlit via window.postMessage
-            window.parent.postMessage(coords, "*");
-        },
-        (err) => { status.innerHTML = "Error: " + err.message; },
-        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
-    );
+        status.innerHTML = `<b>Detected:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
+
+        // Send to Streamlit
+        const message = {lat: lat, lon: lon, address: address};
+        window.parent.postMessage({isStreamlitMessage: true, data: message}, "*");
+    }, (err) => {
+        status.innerHTML = "Error: " + err.message;
+    }, {enableHighAccuracy:true, timeout:20000});
 }
 </script>
 """
 
-# Embed JS in Streamlit
+# Embed HTML
 components.html(gps_html, height=150)
 
-# --- Read stored coordinates from JSON file ---
-lat = lon = None
-if os.path.exists(COORDS_FILE):
+# JS sends data here
+message = st.experimental_get_query_params().get("location_data")
+
+# Use Streamlit to listen to postMessage
+# workaround using Streamlit session state to store the latest location
+if "latest_location" not in st.session_state:
+    st.session_state["latest_location"] = None
+
+# This part updates when JS sends message
+st.write("Click the button above to detect your location. The map and address will show below:")
+
+# We need a small hack using components.html to catch the postMessage
+components.html("""
+<script>
+window.addEventListener("message", (event) => {
+    if(event.data && event.data.isStreamlitMessage){
+        const loc = event.data.data;
+        const coordsEl = document.getElementById("coords_json");
+        coordsEl.value = JSON.stringify(loc);
+        coordsEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+});
+</script>
+<input type="hidden" id="coords_json">
+""", height=0)
+
+# Hidden input to capture JS message
+coords_json = st.text_input("coords_input", "")
+
+if coords_json:
     try:
-        with open(COORDS_FILE, "r") as f:
-            data = json.load(f)
-            lat = data.get("lat")
-            lon = data.get("lon")
-    except Exception as e:
-        st.warning(f"⚠️ Could not read stored coordinates: {e}")
+        loc_data = json.loads(coords_json)
+        st.session_state["latest_location"] = loc_data
+    except:
+        pass
 
-if lat is None or lon is None:
-    st.warning("⚠️ Location not detected yet. Click the button above in the browser.")
-else:
-    st.success(f"📍 Detected Coordinates: {lat:.6f}, {lon:.6f}")
+# Show the latest detected location
+if st.session_state["latest_location"]:
+    loc = st.session_state["latest_location"]
+    lat = loc["lat"]
+    lon = loc["lon"]
+    address = loc["address"]
 
-    # Reverse geocode
-    try:
-        geolocator = Nominatim(user_agent="gps_tracker_app")
-        location = geolocator.reverse((lat, lon), language="en")
-        if location and location.address:
-            address = location.address
-            st.success(f"✅ Address: {address}")
-        else:
-            st.warning("⚠️ Could not retrieve address from coordinates.")
-    except Exception as e:
-        st.warning(f"⚠️ Geocoding error: {e}")
+    detected_container.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}\n✅ Address: {address}")
 
-    # Show Folium map
-    m = folium.Map(location=[lat, lon], zoom_start=16)
-    folium.Marker([lat, lon], popup=f"You are here\n{address if 'address' in locals() else ''}").add_to(m)
-    st_folium(m, width=700, height=500)
+    # Show map using leaflet
+    map_html = f"""
+    <div id="map" style="height:400px; width:100%; margin-top:10px;"></div>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    var map = L.map('map').setView([{lat}, {lon}], 16);
+    L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }}).addTo(map);
+    L.marker([{lat}, {lon}]).addTo(map)
+        .bindPopup("📍 You are here<br>{address}")
+        .openPopup();
+    </script>
+    """
+    map_container.components.html(map_html, height=450)
