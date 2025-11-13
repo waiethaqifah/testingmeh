@@ -86,9 +86,9 @@ import os
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
-COORD_FILE = "coords.txt"  # plain text
+COORD_FILE = "coords.txt"
 
-# HTML + JS to get location and send to hidden input
+# HTML + JS to detect location and write to hidden textarea
 gps_html = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
@@ -111,7 +111,6 @@ function getLocation() {
             const lat = pos.coords.latitude;
             const lon = pos.coords.longitude;
             const acc = pos.coords.accuracy;
-
             status.innerHTML = "Latitude: " + lat.toFixed(6) + ", Longitude: " + lon.toFixed(6) + " (Accuracy ±" + acc + " m)";
 
             // Show map
@@ -124,11 +123,11 @@ function getLocation() {
                 .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
                 .openPopup();
 
-            // Send coordinates to Streamlit hidden input
-            const coordsInput = window.parent.document.getElementById("coords_input");
-            if (coordsInput) {
-                coordsInput.value = lat + "," + lon;
-                coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
+            // Send coords to Streamlit hidden textarea
+            const coordsArea = window.parent.document.getElementById("coords_input");
+            if (coordsArea) {
+                coordsArea.value = JSON.stringify({lat: lat, lon: lon});
+                coordsArea.dispatchEvent(new Event('input', { bubbles: true }));
             }
         },
         (err) => { status.innerHTML = "Error: " + err.message; },
@@ -137,38 +136,40 @@ function getLocation() {
 }
 </script>
 
-<input type="text" id="coords_input" style="display:none;">
+<textarea id="coords_input" style="display:none;"></textarea>
 """
 
 components.html(gps_html, height=500)
 
-# Read from hidden input
-coords = st.text_input("coords_input", "")
+# Read hidden textarea (JSON)
+coords_json = st.text_area("coords_input", "", height=1, label_visibility="collapsed")
 
-def parse_coords(text):
-    if not text.strip():  # kosong
-        return None, None
+lat = lon = None
+
+# Parse JSON and store to file
+if coords_json:
+    import json
     try:
-        lat, lon = map(float, text.strip().split(","))
-        return lat, lon
-    except:
-        return None, None
+        data = json.loads(coords_json)
+        lat = data.get("lat")
+        lon = data.get("lon")
+        if lat is not None and lon is not None:
+            with open(COORD_FILE, "w") as f:
+                f.write(f"{lat},{lon}")
+    except json.JSONDecodeError:
+        st.warning("⚠️ Could not parse coordinates JSON.")
 
-lat, lon = parse_coords(coords)
-
-# If got from input, save to file
-if lat is not None and lon is not None:
-    with open(COORD_FILE, "w") as f:
-        f.write(f"{lat},{lon}")
-
-# If no input, try read from file safely
-if lat is None or lon is None:
-    if os.path.exists(COORD_FILE):
+# If file exists, read from it
+if (lat is None or lon is None) and os.path.exists(COORD_FILE):
+    try:
         with open(COORD_FILE, "r") as f:
             file_text = f.read().strip()
-            lat, lon = parse_coords(file_text)
+            if file_text:
+                lat, lon = map(float, file_text.split(","))
+    except Exception as e:
+        st.warning(f"⚠️ Error reading coordinates from file: {e}")
 
-# If we have valid coordinates, reverse geocode
+# Reverse geocode if we have coordinates
 if lat is not None and lon is not None:
     st.info(f"📍 Detected coordinates: {lat:.6f}, {lon:.6f}")
     try:
