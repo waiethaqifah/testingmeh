@@ -1,15 +1,16 @@
 import streamlit as st
 from geopy.geocoders import Nominatim
+import folium
+from streamlit_folium import st_folium
 import json
-import streamlit.components.v1 as components
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address & Map")
 
-# Hidden text input to get coords from JS
+# Hidden text input for JS to fill coordinates
 coords_json = st.text_input("coords_json", "")
 
-# JS HTML to detect location and fill hidden input
+# JS to detect location and put it in the hidden input
 js_code = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
@@ -37,10 +38,9 @@ async function getLocation() {
 </script>
 """
 
-# Render the JS
-components.html(js_code, height=150)
+st.components.v1.html(js_code, height=150)
 
-# If JS has set coordinates, show map
+# If JS has detected coordinates, parse them and display map
 if coords_json:
     try:
         loc = json.loads(coords_json)
@@ -49,23 +49,12 @@ if coords_json:
         st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}")
         st.success(f"✅ Address: {address}")
 
-        # Leaflet map HTML
-        map_html = f"""
-        <div id="map" style="height:500px; width:100%; margin-top:10px;"></div>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-        <script>
-            var map = L.map('map').setView([{lat}, {lon}], 16);
-            L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                maxZoom: 19,
-                attribution: '&copy; OpenStreetMap contributors'
-            }}).addTo(map);
-            L.marker([{lat}, {lon}]).addTo(map)
-                .bindPopup("📍 You are here<br>{address}")
-                .openPopup();
-        </script>
-        """
-        components.html(map_html, height=500)
+        # Create a folium map
+        m = folium.Map(location=[lat, lon], zoom_start=16)
+        folium.Marker([lat, lon], popup=f"📍 You are here\n{address}").add_to(m)
+
+        # Display map using streamlit_folium
+        st_folium(m, width=700, height=500)
 
     except Exception as e:
         st.warning(f"⚠️ Error parsing coordinates: {e}")
