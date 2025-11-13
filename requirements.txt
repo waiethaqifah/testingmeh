@@ -1,3 +1,5 @@
 streamlit
 geopy
+folium
+streamlit-folium
 streamlit-geolocation
