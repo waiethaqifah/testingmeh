@@ -1,4 +1,5 @@
-'''import streamlit as st
+'''
+import streamlit as st
 from geopy.geocoders import Nominatim
 import streamlit.components.v1 as components
 import html
@@ -81,14 +82,14 @@ import streamlit as st
 from geopy.geocoders import Nominatim
 import streamlit.components.v1 as components
 import os
+import json
 
 st.set_page_config(page_title="📍 GPS Tracker + Map + Address", page_icon="🗺️")
 st.title("📍 GPS Tracker with Map and Address")
 
-# File to store coordinates
-coords_file = "coords.txt"
+coords_file = "coords.json"
 
-# --- JavaScript + Leaflet for GPS detection ---
+# --- JS + HTML ---
 gps_html = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
@@ -124,59 +125,46 @@ function getLocation() {
                 .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
                 .openPopup();
 
-            // Send coordinates to Streamlit hidden input
-            const coordsInput = document.getElementById("coords_input");
-            coordsInput.value = lat + "," + lon;
-            coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
+            // Save to file via Streamlit endpoint
+            fetch('/save_coords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({lat: lat, lon: lon})
+            });
         },
         (err) => { status.innerHTML = "Error: " + err.message; },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
 }
 </script>
-
-<input type="text" id="coords_input" style="display:none;">
 """
 
-# Embed the HTML
+# Embed JS
 components.html(gps_html, height=500)
 
-# --- Streamlit reads the detected coordinates automatically ---
-coords_input = st.text_input("hidden_coords", value="", key="coords_input", label_visibility="collapsed")
+# --- Python server-side endpoint ---
+def save_coords(lat, lon):
+    with open(coords_file, "w") as f:
+        json.dump({"lat": lat, "lon": lon}, f)
 
-# If coordinates detected
-if coords_input:
-    try:
-        lat_str, lon_str = coords_input.split(",")
-        lat, lon = float(lat_str), float(lon_str)
-
-        # Save automatically to file
-        with open(coords_file, "w") as f:
-            f.write(f"{lat},{lon}")
-
-        st.info(f"📍 Detected Coordinates: {lat:.6f}, {lon:.6f}")
-
-        # Reverse geocode automatically
-        geolocator = Nominatim(user_agent="gps_app")
-        location = geolocator.reverse((lat, lon), language="en", timeout=10)
-        if location and location.address:
-            address = location.address
-            st.success(f"✅ Detected Address: {address}")
-        else:
-            st.warning("⚠️ Could not retrieve address from coordinates.")
-
-    except Exception as e:
-        st.error(f"⚠️ Error processing coordinates: {e}")
-
-# Optional: show map link
+# --- Check if file exists and read ---
 if os.path.exists(coords_file):
     with open(coords_file, "r") as f:
-        content = f.read().strip()
-    try:
-        lat, lon = map(float, content.split(","))
-        st.markdown(f"[🌍 Open in Google Maps](https://www.google.com/maps?q={lat},{lon})")
-    except:
-        pass
+        data = json.load(f)
+        lat, lon = data.get("lat"), data.get("lon")
+        if lat and lon:
+            st.info(f"📍 Coordinates: {lat:.6f}, {lon:.6f}")
 
-        st.warning("⚠️ Location not detected yet. Click the button above first.")
+            # Reverse geocode
+            geolocator = Nominatim(user_agent="gps_app")
+            try:
+                location = geolocator.reverse((lat, lon), language="en")
+                if location and location.address:
+                    st.success(f"✅ Detected Address: {location.address}")
+                else:
+                    st.warning("⚠️ Could not retrieve address.")
+            except Exception as e:
+                st.error(f"⚠️ Reverse geocode error: {e}")
+
+            st.markdown(f"[🌍 Open in Google Maps](https://www.google.com/maps?q={lat},{lon})")
 
