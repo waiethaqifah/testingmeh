@@ -1,4 +1,3 @@
-'''
 import streamlit as st
 import json
 from geopy.geocoders import Nominatim
@@ -84,73 +83,5 @@ if coords_json:
 
     except Exception as e:
         st.warning(f"⚠️ Error parsing coordinates: {e}")
-'''
-import streamlit as st
-import json
-import folium
-from streamlit_folium import st_folium
 
-st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
-st.title("📍 GPS Tracker with Map and Address")
 
-# Hidden Streamlit text_input that JS can write to
-if "coords_json" not in st.session_state:
-    st.session_state.coords_json = ""
-
-coords_input = st.text_input("coords_json", value=st.session_state.coords_json, key="coords_json", label_visibility="collapsed")
-
-# JS code to get geolocation and fill hidden input
-js_code = """
-<div style="text-align:center; margin-bottom:10px;">
-  <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
-  <p id="status">Waiting for location...</p>
-</div>
-
-<script>
-async function getLocation() {
-  const status = document.getElementById('status');
-  if (!navigator.geolocation) {
-    status.innerHTML = "Geolocation not supported by this browser.";
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(async (pos) => {
-    const lat = pos.coords.latitude;
-    const lon = pos.coords.longitude;
-    let address = "Unknown";
-
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
-      const data = await res.json();
-      if (data && data.display_name) { address = data.display_name; }
-    } catch(e){ address = "Could not get address"; }
-
-    status.innerHTML = `<b>Coordinates:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
-
-    // Send coordinates to Streamlit text_input
-    const input = window.parent.document.querySelector('input[id="coords_json"]');
-    input.value = JSON.stringify({lat: lat, lon: lon, address: address});
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }, (err) => { status.innerHTML = "Error: "+err.message; }, { enableHighAccuracy:true });
-}
-</script>
-"""
-
-st.components.v1.html(js_code, height=150)
-
-# Render map if coordinates exist
-if st.session_state.coords_json:
-    try:
-        loc = json.loads(st.session_state.coords_json)
-        lat, lon, address = loc["lat"], loc["lon"], loc["address"]
-
-        st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}")
-        st.success(f"✅ Address: {address}")
-
-        # Folium map
-        m = folium.Map(location=[lat, lon], zoom_start=16)
-        folium.Marker([lat, lon], popup=f"📍 You are here\n{address}").add_to(m)
-        st_folium(m, width=700, height=500)
-
-    except Exception as e:
-        st.warning(f"⚠️ Error parsing coordinates: {e}")
