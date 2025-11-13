@@ -1,14 +1,14 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import json
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address & Map")
 
-# Placeholder to display the map
+# Placeholder for map
 map_placeholder = st.empty()
 
-# HTML + JS to detect location and reverse geocode
+# HTML + JS to get location and reverse geocode
 gps_html = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
@@ -42,7 +42,7 @@ async function getLocation() {
             address = "Could not retrieve address";
         }
 
-        status.innerHTML = `<b>Detected:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
+        status.innerHTML = `<b>Coordinates:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
 
         // Store coordinates + address in hidden input
         const coordsEl = document.getElementById("coords_json");
@@ -55,10 +55,10 @@ async function getLocation() {
 </script>
 """
 
-# Render the JS + HTML
+# Render the JS button
 components.html(gps_html, height=150)
 
-# Hidden input that JS fills
+# Get the hidden input filled by JS
 coords_json = st.text_input("coords_json", "")
 
 if coords_json:
