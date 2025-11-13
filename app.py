@@ -1,16 +1,16 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from geopy.geocoders import Nominatim
-import json
-import os
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
-# File to store coordinates
-COORD_FILE = "coords.txt"
+st.write("Click the button to get your location. Your address will be detected automatically.")
 
-# JS + HTML to get current location
+# Hidden input to store coordinates from JS
+coords_input = st.text_input("coords_input", "", key="coords_input", label_visibility="collapsed")
+
+# HTML + JS to detect GPS and update hidden input
 gps_html = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
@@ -22,74 +22,68 @@ gps_html = """
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
+var map = L.map('map').setView([0,0],2);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+var marker;
+
 function getLocation() {
-    var status = document.getElementById("status");
+    const status = document.getElementById('status');
     if (!navigator.geolocation) {
-        status.innerHTML = "Geolocation not supported.";
+        status.innerHTML = "Geolocation not supported by this browser.";
         return;
     }
-    navigator.geolocation.getCurrentPosition(function(pos) {
-        var lat = pos.coords.latitude;
-        var lon = pos.coords.longitude;
-        var acc = pos.coords.accuracy;
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const acc = pos.coords.accuracy;
 
-        status.innerHTML = "Latitude: " + lat.toFixed(6) + ", Longitude: " + lon.toFixed(6) + " (Accuracy ±" + acc + " m)";
+            status.innerHTML = `Latitude: ${lat.toFixed(6)}, Longitude: ${lon.toFixed(6)} (Accuracy ±${acc} m)`;
 
-        // Show map
-        var map = L.map('map').setView([lat, lon], 16);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-        L.marker([lat, lon]).addTo(map)
-            .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
-            .openPopup();
+            // Update map
+            map.setView([lat, lon], 16);
+            if (marker) map.removeLayer(marker);
+            marker = L.marker([lat, lon]).addTo(map)
+                .bindPopup(`📍 You are here<br>Accuracy ±${acc} m`)
+                .openPopup();
 
-        // Send coordinates to Streamlit via file
-        fetch("/save_coords", {
-            method: "POST",
-            body: JSON.stringify({lat: lat, lon: lon}),
-            headers: {"Content-Type": "application/json"}
-        });
-    }, function(err) {
-        status.innerHTML = "Error: " + err.message;
-    }, {enableHighAccuracy:true, timeout:20000});
+            // Update hidden input to send coordinates to Streamlit
+            const coordsInput = window.parent.document.querySelector('input[id="coords_input"]');
+            if (coordsInput) {
+                coordsInput.value = lat + "," + lon;
+                coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        },
+        (err) => { status.innerHTML = "Error: " + err.message; },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
 }
 </script>
 """
 
-# Embed the JS
 components.html(gps_html, height=500)
 
-# --- Python side ---
-# Load coordinates from file if exists
-lat, lon = None, None
-if os.path.exists(COORD_FILE):
+# Read coordinates from hidden input
+if coords_input:
     try:
-        with open(COORD_FILE, "r") as f:
-            data = json.load(f)
-            lat, lon = data.get("lat"), data.get("lon")
-    except Exception as e:
-        st.warning(f"⚠️ Error reading coordinates from file: {e}")
+        lat_str, lon_str = coords_input.split(",")
+        lat = float(lat_str)
+        lon = float(lon_str)
 
-# If we have coordinates, show map and address
-if lat is not None and lon is not None:
-    st.success(f"📍 Detected coordinates: Latitude {lat:.6f}, Longitude {lon:.6f}")
-    # Reverse geocode
-    try:
+        st.info(f"📍 Selected coordinates: {lat:.6f}, {lon:.6f}")
+
+        # Reverse geocode
         geolocator = Nominatim(user_agent="streamlit_gps_app")
         location = geolocator.reverse((lat, lon), language="en")
         if location and location.address:
-            address = location.address
-            st.success(f"✅ Address: {address}")
+            st.success(f"✅ Detected Address: {location.address}")
         else:
             st.warning("⚠️ Could not retrieve address from coordinates.")
     except Exception as e:
-        st.warning(f"⚠️ Geocoding error: {e}")
+        st.error(f"⚠️ Error parsing coordinates: {e}")
 else:
     st.info("⚠️ Location not detected yet. Click the button above first.")
-
-# Optional: show Google Maps link
-if lat is not None and lon is not None:
-    st.markdown(f"[🌍 Open in Google Maps](https://www.google.com/maps?q={lat},{lon})")
-
