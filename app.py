@@ -1,72 +1,50 @@
 import streamlit as st
+from geopy.geocoders import Nominatim
 import json
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address & Map")
 
-# Placeholder for map
-map_placeholder = st.empty()
+# Hidden text input to get coords from JS
+coords_json = st.text_input("coords_json", "")
 
-# HTML + JS to get location and reverse geocode
-gps_html = """
+# JS HTML to detect location and fill hidden input
+js_code = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
 </div>
-
-<input type="hidden" id="coords_json">
-
 <script>
 async function getLocation() {
     const status = document.getElementById('status');
-    if (!navigator.geolocation) {
-        status.innerHTML = "Geolocation not supported by this browser.";
-        return;
-    }
-
+    if (!navigator.geolocation) {status.innerHTML="Geolocation not supported"; return;}
+    
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
-
-        // Reverse geocode using Nominatim
-        let address = "Unknown";
+        let address="Unknown";
         try {
-            const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
-            const resp = await fetch(url);
+            const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
             const data = await resp.json();
-            if (data && data.display_name) {
-                address = data.display_name;
-            }
-        } catch (e) {
-            address = "Could not retrieve address";
-        }
-
-        status.innerHTML = `<b>Coordinates:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
-
-        // Store coordinates + address in hidden input
-        const coordsEl = document.getElementById("coords_json");
-        coordsEl.value = JSON.stringify({lat: lat, lon: lon, address: address});
-        coordsEl.dispatchEvent(new Event('input', { bubbles: true }));
-    }, (err) => {
-        status.innerHTML = "Error: " + err.message;
-    }, {enableHighAccuracy:true, timeout:20000});
+            if(data && data.display_name){ address = data.display_name; }
+        } catch(e){ address="Could not get address"; }
+        status.innerHTML=`<b>Coordinates:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
+        document.querySelector('input[id="coords_json"]').value = JSON.stringify({lat:lat, lon:lon, address:address});
+        document.querySelector('input[id="coords_json"]').dispatchEvent(new Event('input',{bubbles:true}));
+    }, err => {status.innerHTML="Error: "+err.message;}, {enableHighAccuracy:true});
 }
 </script>
 """
 
-# Render the JS button
-components.html(gps_html, height=150)
+# Render the JS
+components.html(js_code, height=150)
 
-# Get the hidden input filled by JS
-coords_json = st.text_input("coords_json", "")
-
+# If JS has set coordinates, show map
 if coords_json:
     try:
         loc = json.loads(coords_json)
-        lat = loc["lat"]
-        lon = loc["lon"]
-        address = loc["address"]
+        lat, lon, address = loc["lat"], loc["lon"], loc["address"]
 
         st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}")
         st.success(f"✅ Address: {address}")
@@ -77,17 +55,17 @@ if coords_json:
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <script>
-        var map = L.map('map').setView([{lat}, {lon}], 16);
-        L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap contributors'
-        }}).addTo(map);
-        L.marker([{lat}, {lon}]).addTo(map)
-            .bindPopup("📍 You are here<br>{address}")
-            .openPopup();
+            var map = L.map('map').setView([{lat}, {lon}], 16);
+            L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }}).addTo(map);
+            L.marker([{lat}, {lon}]).addTo(map)
+                .bindPopup("📍 You are here<br>{address}")
+                .openPopup();
         </script>
         """
-        map_placeholder.components.html(map_html, height=500)
+        components.html(map_html, height=500)
 
     except Exception as e:
-        st.warning(f"⚠️ Error: {e}")
+        st.warning(f"⚠️ Error parsing coordinates: {e}")
