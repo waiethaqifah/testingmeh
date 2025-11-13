@@ -6,13 +6,6 @@ from streamlit_folium import st_folium
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address & Map")
 
-# pip install streamlit-geolocation streamlit-folium folium geopy
-try:
-    from streamlit_geolocation import geolocation
-except ImportError:
-    st.error("Please install streamlit-geolocation: pip install streamlit-geolocation")
-    st.stop()
-
 # Detect location automatically
 user_location = geolocation(timeout=10)
 
@@ -39,3 +32,4 @@ if user_location:
 
 else:
     st.info("⚠️ Location not detected. Make sure you allow location access in your browser.")
+
