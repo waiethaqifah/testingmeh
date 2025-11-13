@@ -56,7 +56,7 @@ async function getLocation() {
 # Embed HTML
 components.html(gps_html, height=150)
 
-# JS sends data here
+# Hidden input to capture JS message
 components.html("""
 <script>
 window.addEventListener("message", (event) => {
@@ -71,7 +71,7 @@ window.addEventListener("message", (event) => {
 <input type="hidden" id="coords_json">
 """, height=0)
 
-# Hidden input to capture JS message
+# Streamlit input that receives the JS data
 coords_json = st.text_input("coords_input", "")
 
 # Store latest location in session state
@@ -94,7 +94,7 @@ if st.session_state["latest_location"]:
 
     detected_container.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}\n✅ Address: {address}")
 
-    # Show Leaflet map
+    # Leaflet map with marker
     map_html = f"""
     <div id="map" style="height:500px; width:100%; margin-top:10px;"></div>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
