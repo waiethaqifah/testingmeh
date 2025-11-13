@@ -7,8 +7,8 @@ import folium
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Map and Address")
 
-# Hidden input to receive JS coordinates
-coords_json = st.text_input("coords_json", "")
+# Hidden input to receive JS coordinates (invisible)
+coords_json = st.text_input("", "", key="coords_json_hidden", label_visibility="collapsed")
 
 # HTML + JS to get location and show Leaflet map, send data to Streamlit
 gps_html = """
@@ -83,3 +83,4 @@ if coords_json:
 
     except Exception as e:
         st.warning(f"⚠️ Error parsing coordinates: {e}")
+
