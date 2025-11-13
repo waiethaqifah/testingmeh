@@ -1,18 +1,19 @@
 import streamlit as st
 from geopy.geocoders import Nominatim
 import streamlit.components.v1 as components
-import html
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
-# HTML + JS to get current location
+# HTML + JS
 gps_html = """
 <div style="text-align:center;">
-    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
+    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
     <div id="map" style="height:400px; width:100%; margin-top:10px;"></div>
 </div>
+
+<input type="text" id="coords_input" style="display:none;">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -20,17 +21,20 @@ gps_html = """
 <script>
 function getLocation() {
     const status = document.getElementById('status');
+    const coordsInput = document.getElementById('coords_input');
+
     if (!navigator.geolocation) {
-        status.innerHTML = "Geolocation not supported by this browser.";
+        status.innerHTML = "Geolocation not supported.";
         return;
     }
+
     navigator.geolocation.getCurrentPosition(
         (pos) => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            const acc = pos.coords.accuracy;
+            const lat = pos.coords.latitude.toFixed(6);
+            const lon = pos.coords.longitude.toFixed(6);
+            const acc = pos.coords.accuracy.toFixed(1);
 
-            status.innerHTML = `Latitude: ${lat.toFixed(6)}, Longitude: ${lon.toFixed(6)} (Accuracy ±${acc} m)`;
+            status.innerHTML = `Latitude: ${lat}, Longitude: ${lon} (Accuracy ±${acc} m)`;
 
             // Show map
             var map = L.map('map').setView([lat, lon], 16);
@@ -42,8 +46,9 @@ function getLocation() {
                 .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
                 .openPopup();
 
-            // Send coordinates to Streamlit
-            window.parent.postMessage({lat: lat, lon: lon}, "*");
+            // Write coordinates to hidden input for Streamlit
+            coordsInput.value = lat + "," + lon;
+            coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
         },
         (err) => { status.innerHTML = "Error: " + err.message; },
         { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
@@ -52,27 +57,26 @@ function getLocation() {
 </script>
 """
 
-# Embed the HTML
+# Embed HTML
 components.html(gps_html, height=500)
 
-# Listen to JS message and reverse geocode
-coords = st.experimental_get_query_params()  # placeholder for later if needed
+# Streamlit reads the hidden input
+coords = st.text_input("hidden_coords", value="", label_visibility="collapsed")
 
-# Instead of the textarea hack, we can use a simple workaround:
-# The JS sends the coordinates via postMessage, but Streamlit cannot catch it directly
-# So we can ask user to click the button and then manually input lat/lon in a small input box (for iOS Safari compatibility)
-lat = st.number_input("Latitude", value=0.0, format="%.6f")
-lon = st.number_input("Longitude", value=0.0, format="%.6f")
-click_btn = st.button("Get Address from Coordinates")
-
-if click_btn:
+if coords:
     try:
+        lat_str, lon_str = coords.split(",")
+        lat = float(lat_str)
+        lon = float(lon_str)
+
+        # Reverse geocode automatically
         geolocator = Nominatim(user_agent="gps_app")
         location = geolocator.reverse((lat, lon), language="en")
         if location and location.address:
-            address = location.address
-            st.success(f"📍 Detected Address: {address}")
+            st.success(f"📍 Detected Address: {location.address}")
         else:
             st.warning("⚠️ Could not retrieve address from coordinates.")
     except Exception as e:
         st.warning(f"⚠️ Error: {e}")
+else:
+    st.info("⚠️ Location not detected yet. Click the button above.")
