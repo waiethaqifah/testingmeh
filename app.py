@@ -93,12 +93,17 @@ from streamlit_folium import st_folium
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Map and Address")
 
-# Hidden input to receive JS coordinates (hidden via type="hidden")
+# Hidden Streamlit text_input that JS can write to
+if "coords_json" not in st.session_state:
+    st.session_state.coords_json = ""
+
+coords_input = st.text_input("coords_json", value=st.session_state.coords_json, key="coords_json", label_visibility="collapsed")
+
+# JS code to get geolocation and fill hidden input
 js_code = """
 <div style="text-align:center; margin-bottom:10px;">
   <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
   <p id="status">Waiting for location...</p>
-  <input type="hidden" id="coords_json" />
 </div>
 
 <script>
@@ -122,10 +127,10 @@ async function getLocation() {
 
     status.innerHTML = `<b>Coordinates:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
 
-    // Send coordinates to Streamlit via hidden input
-    const hiddenInput = document.getElementById("coords_json");
-    hiddenInput.value = JSON.stringify({lat: lat, lon: lon, address: address});
-    hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+    // Send coordinates to Streamlit text_input
+    const input = window.parent.document.querySelector('input[id="coords_json"]');
+    input.value = JSON.stringify({lat: lat, lon: lon, address: address});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
   }, (err) => { status.innerHTML = "Error: "+err.message; }, { enableHighAccuracy:true });
 }
 </script>
@@ -133,12 +138,10 @@ async function getLocation() {
 
 st.components.v1.html(js_code, height=150)
 
-# Retrieve coordinates from hidden input
-coords_json = st.experimental_get_query_params().get("coords_json", [""])[0]
-
-if coords_json:
+# Render map if coordinates exist
+if st.session_state.coords_json:
     try:
-        loc = json.loads(coords_json)
+        loc = json.loads(st.session_state.coords_json)
         lat, lon, address = loc["lat"], loc["lon"], loc["address"]
 
         st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}")
@@ -151,6 +154,3 @@ if coords_json:
 
     except Exception as e:
         st.warning(f"⚠️ Error parsing coordinates: {e}")
-
-
-
