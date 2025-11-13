@@ -5,11 +5,7 @@ import json
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address & Map")
 
-# Container to show detected info
-detected_container = st.empty()
-map_container = st.empty()
-
-# HTML + JS to detect location and reverse geocode in the browser
+# HTML + JS to detect location and reverse geocode
 gps_html = """
 <div style="text-align:center;">
     <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
@@ -28,7 +24,7 @@ async function getLocation() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
 
-        // Reverse geocode using Nominatim (directly in browser)
+        // Reverse geocode using Nominatim
         let address = "Unknown";
         try {
             const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
@@ -43,7 +39,7 @@ async function getLocation() {
 
         status.innerHTML = `<b>Detected:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
 
-        // Send to Streamlit
+        // Send coordinates + address to Streamlit
         const message = {lat: lat, lon: lon, address: address};
         window.parent.postMessage({isStreamlitMessage: true, data: message}, "*");
     }, (err) => {
@@ -51,12 +47,13 @@ async function getLocation() {
     }, {enableHighAccuracy:true, timeout:20000});
 }
 </script>
+<input type="hidden" id="coords_json">
 """
 
-# Embed HTML
+# Embed the GPS detector
 components.html(gps_html, height=150)
 
-# Hidden input to capture JS message
+# JS listener to fill hidden input
 components.html("""
 <script>
 window.addEventListener("message", (event) => {
@@ -68,7 +65,7 @@ window.addEventListener("message", (event) => {
     }
 });
 </script>
-<input type="hidden" id="coords_json">
+<input type="text" id="coords_input" style="display:none;">
 """, height=0)
 
 # Streamlit input that receives the JS data
@@ -85,16 +82,16 @@ if coords_json:
     except:
         pass
 
-# Show the latest detected location and Leaflet map
+# Display the latest detected location and Leaflet map
 if st.session_state["latest_location"]:
     loc = st.session_state["latest_location"]
     lat = loc["lat"]
     lon = loc["lon"]
     address = loc["address"]
 
-    detected_container.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}\n✅ Address: {address}")
+    st.success(f"📍 Coordinates: {lat:.6f}, {lon:.6f}\n✅ Address: {address}")
 
-    # Leaflet map with marker
+    # Leaflet map
     map_html = f"""
     <div id="map" style="height:500px; width:100%; margin-top:10px;"></div>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -110,4 +107,6 @@ if st.session_state["latest_location"]:
         .openPopup();
     </script>
     """
-    map_container.components.html(map_html, height=500)
+
+    # Render the map using st.components.v1.html
+    components.html(map_html, height=500)
