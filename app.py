@@ -1,35 +1,15 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from geopy.geocoders import Nominatim
-import json
-import os
+import streamlit.components.v1 as components
+import html
 
 st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
-COORDS_FILE = "coords.json"
-
-def read_coords():
-    if os.path.exists(COORDS_FILE):
-        try:
-            with open(COORDS_FILE, "r") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-        except:
-            pass
-    return []
-
-def store_coords(lat, lon):
-    coords_list = read_coords()
-    coords_list.append({"lat": lat, "lon": lon})
-    with open(COORDS_FILE, "w") as f:
-        json.dump(coords_list, f, indent=2)
-
-# --- HTML + JS for automatic location detection ---
+# HTML + JS to get current location
 gps_html = """
 <div style="text-align:center;">
-    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
+    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
     <p id="status" style="margin-top:10px;">Waiting for location...</p>
     <div id="map" style="height:400px; width:100%; margin-top:10px;"></div>
 </div>
@@ -41,15 +21,16 @@ gps_html = """
 function getLocation() {
     const status = document.getElementById('status');
     if (!navigator.geolocation) {
-        status.innerHTML = "Geolocation not supported.";
+        status.innerHTML = "Geolocation not supported by this browser.";
         return;
     }
     navigator.geolocation.getCurrentPosition(
         (pos) => {
-            const lat = pos.coords.latitude.toFixed(6);
-            const lon = pos.coords.longitude.toFixed(6);
-            const acc = pos.coords.accuracy.toFixed(1);
-            status.innerHTML = `Latitude: ${lat}, Longitude: ${lon} (Accuracy ±${acc} m)`;
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const acc = pos.coords.accuracy;
+
+            status.innerHTML = `Latitude: ${lat.toFixed(6)}, Longitude: ${lon.toFixed(6)} (Accuracy ±${acc} m)`;
 
             // Show map
             var map = L.map('map').setView([lat, lon], 16);
@@ -61,7 +42,91 @@ function getLocation() {
                 .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
                 .openPopup();
 
-            // Automatically send coordinates to Streamlit hidden input
+            // Send coordinates to Streamlit
+            window.parent.postMessage({lat: lat, lon: lon}, "*");
+        },
+        (err) => { status.innerHTML = "Error: " + err.message; },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+}
+</script>
+"""
+
+# Embed the HTML
+components.html(gps_html, height=500)
+
+# Listen to JS message and reverse geocode
+coords = st.experimental_get_query_params()  # placeholder for later if needed
+
+# Instead of the textarea hack, we can use a simple workaround:
+# The JS sends the coordinates via postMessage, but Streamlit cannot catch it directly
+# So we can ask user to click the button and then manually input lat/lon in a small input box (for iOS Safari compatibility)
+lat = st.number_input("Latitude", value=0.0, format="%.6f")
+lon = st.number_input("Longitude", value=0.0, format="%.6f")
+click_btn = st.button("Get Address from Coordinates")
+
+if click_btn:
+    try:
+        geolocator = Nominatim(user_agent="gps_app")
+        location = geolocator.reverse((lat, lon), language="en")
+        if location and location.address:
+            address = location.address
+            st.success(f"📍 Detected Address: {address}")
+        else:
+            st.warning("⚠️ Could not retrieve address from coordinates.")
+    except Exception as e:
+        st.warning(f"⚠️ Error: {e}")
+'''
+import streamlit as st
+from geopy.geocoders import Nominatim
+import streamlit.components.v1 as components
+
+st.set_page_config(page_title="📍 GPS Tracker + Map", page_icon="🗺️")
+st.title("📍 GPS Tracker with Map and Address")
+
+st.write("Click the button below to get your GPS location and confirm it:")
+
+# --- JavaScript + Leaflet for GPS detection ---
+gps_html = """
+<div style="text-align:center;">
+    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Get My Location</button>
+    <p id="status" style="margin-top:10px;">Waiting for location...</p>
+    <div id="map" style="height:400px; width:100%; margin-top:10px;"></div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+var detectedLat = 0;
+var detectedLon = 0;
+
+function getLocation() {
+    const status = document.getElementById('status');
+    if (!navigator.geolocation) {
+        status.innerHTML = "Geolocation not supported by this browser.";
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const acc = pos.coords.accuracy;
+            detectedLat = lat;
+            detectedLon = lon;
+            status.innerHTML = `Latitude: ${lat.toFixed(6)}, Longitude: ${lon.toFixed(6)} (Accuracy ±${acc} m)`;
+
+            // Show map
+            var map = L.map('map').setView([lat, lon], 16);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            L.marker([lat, lon]).addTo(map)
+                .bindPopup("📍 You are here<br>Accuracy ±" + acc + " m")
+                .openPopup();
+
+            // Send coordinates to Streamlit hidden input
             const coordsInput = document.getElementById("coords_input");
             coordsInput.value = lat + "," + lon;
             coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -72,43 +137,5 @@ function getLocation() {
 }
 </script>
 
+<!-- Hidden input for Streamlit to read -->
 <input type="text" id="coords_input" style="display:none;">
-"""
-
-# Embed JS
-components.html(gps_html, height=500)
-
-# Streamlit reads coordinates from the hidden input
-coords = st.text_input("", value="", key="coords_hidden", label_visibility="collapsed")
-
-if coords:
-    try:
-        lat_str, lon_str = coords.split(",")
-        lat = float(lat_str)
-        lon = float(lon_str)
-
-        # Store coords automatically
-        store_coords(lat, lon)
-
-        st.success(f"📍 Coordinates detected: {lat:.6f}, {lon:.6f}")
-
-        # Reverse geocode address
-        geolocator = Nominatim(user_agent="streamlit_gps_app")
-        location = geolocator.reverse((lat, lon), language="en")
-        if location and location.address:
-            address = location.address
-            st.success(f"✅ Address: {address}")
-        else:
-            st.warning("⚠️ Could not retrieve address from coordinates.")
-
-    except Exception as e:
-        st.warning(f"⚠️ Error processing coordinates: {e}")
-else:
-    st.info("⚠️ Location not detected yet. Click the button above in the map.")
-
-# Display previous locations
-all_coords = read_coords()
-if all_coords:
-    st.subheader("📜 Previous detected locations:")
-    for idx, c in enumerate(all_coords[::-1], start=1):
-        st.write(f"{idx}. Lat: {c['lat']}, Lon: {c['lon']}")
