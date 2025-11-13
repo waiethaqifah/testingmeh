@@ -8,7 +8,7 @@ st.set_page_config(page_title="📍 GPS Tracker", page_icon="🗺️")
 st.title("📍 GPS Tracker with Address")
 
 # File to store coordinates
-COORD_FILE = "coords.json"
+COORD_FILE = "coords.txt"
 
 # JS + HTML to get current location
 gps_html = """
@@ -92,3 +92,4 @@ else:
 # Optional: show Google Maps link
 if lat is not None and lon is not None:
     st.markdown(f"[🌍 Open in Google Maps](https://www.google.com/maps?q={lat},{lon})")
+
