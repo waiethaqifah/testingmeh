@@ -162,7 +162,8 @@ with st.form(key="geolocation_form", clear_on_submit=False):
     coords_input = st.text_input("Coordinates Payload", key="coords_payload", label_visibility="hidden")
     
     # Hidden button that will be clicked by the JS to trigger the Python script rerun
-    submit_button = st.form_submit_button("Submit Location Data", type="primary", use_container_width=True, label_visibility="hidden")
+    # FIX: Removed the unsupported 'label_visibility' argument, which caused the TypeError.
+    submit_button = st.form_submit_button("Submit Location Data", type="primary", use_container_width=True)
     
     # Pass the labels/keys as pseudo-IDs to the JS function
     hidden_input_id = "Coordinates Payload"
