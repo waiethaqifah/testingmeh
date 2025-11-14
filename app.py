@@ -91,6 +91,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from streamlit_javascript import st_javascript
+import os
 
 st.title("📍 Test: Detect User Location and Save to CSV")
 
@@ -134,11 +135,21 @@ if st.button("📍 Detect My Location"):
 if st.session_state.location:
     if st.button("💾 Save Location to CSV"):
         loc = st.session_state.location
+        file_name = "test_locations.csv"
+
+        # Prepare dataframe
         df = pd.DataFrame([{
             "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Latitude": loc["lat"],
             "Longitude": loc["lon"],
             "Address": loc["address"]
         }])
-        df.to_csv("test_locations.csv", mode='a', header=not pd.io.common.file_exists("test_locations.csv"), index=False)
-        st.success("✅ Location saved to test_locations.csv")
+
+        # Append mode: write header only if file doesn't exist
+        if not os.path.exists(file_name):
+            df.to_csv(file_name, mode='w', header=True, index=False)
+        else:
+            df.to_csv(file_name, mode='a', header=False, index=False)
+
+        st.success(f"✅ Location saved to {file_name}")
+
