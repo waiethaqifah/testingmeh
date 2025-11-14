@@ -3,3 +3,4 @@ geopy
 folium
 streamlit-folium
 streamlit-geolocation
+streamlit-javascript
