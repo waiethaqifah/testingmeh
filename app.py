@@ -89,67 +89,86 @@ if coords_json:
 
 import streamlit as st
 import pandas as pd
+import json
 from datetime import datetime
-from streamlit_javascript import st_javascript
 import os
 
-st.title("📍 Test: Detect User Location and Save to CSV")
+st.title("📍 Detect Location Test")
 
-# Initialize session_state
-if 'location' not in st.session_state:
-    st.session_state.location = None
+# Initialize session state
+if 'coords_json' not in st.session_state:
+    st.session_state.coords_json = ""
 
-# Button to detect location
-if st.button("📍 Detect My Location"):
-    js_code = """
-    async () => {
-        if (!navigator.geolocation) return null;
-        return new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-                async pos => {
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-                    let address = "Unknown";
-                    try {
-                        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
-                        const data = await res.json();
-                        if(data.display_name) address = data.display_name;
-                    } catch(e) { address = "Could not get address"; }
-                    resolve({lat, lon, address});
-                },
-                err => { resolve(null); },
-                { enableHighAccuracy: true }
-            );
-        });
+# Hidden input to receive coordinates
+coords_json = st.text_input(
+    "coords_json",
+    st.session_state.coords_json,
+    key="coords_input",
+    label_visibility="collapsed"
+)
+
+# HTML + JS for geolocation
+gps_html = """
+<div style="text-align:center; margin-bottom:10px;">
+    <button onclick="getLocation()" style="padding:10px 20px; font-size:16px;">📍 Detect My Location</button>
+    <p id="status" style="margin-top:5px;">Waiting for location...</p>
+    <input type="hidden" id="coords_json">
+</div>
+
+<script>
+async function getLocation() {
+    const status = document.getElementById('status');
+    const coordsInput = document.getElementById('coords_json');
+
+    if (!navigator.geolocation) {
+        status.innerHTML = "Geolocation not supported by this browser.";
+        return;
     }
-    """
-    loc = st_javascript(js_code, key="detect_location")
-    if loc:
-        st.session_state.location = loc
-        st.success(f"📍 Detected Address: {loc['address']}")
-        st.write(f"Latitude: {loc['lat']}, Longitude: {loc['lon']}")
+
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        let address = "Unknown";
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+            const data = await res.json();
+            if(data && data.display_name) address = data.display_name;
+        } catch(e) { address = "Could not get address"; }
+
+        status.innerHTML = `<b>Coordinates:</b> ${lat.toFixed(6)}, ${lon.toFixed(6)}<br><b>Address:</b> ${address}`;
+
+        // Send data to Python via hidden input
+        coordsInput.value = JSON.stringify({lat: lat, lon: lon, address: address});
+        coordsInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }, (err) => { status.innerHTML = "Error: " + err.message; }, { enableHighAccuracy:true });
+}
+</script>
+"""
+
+st.components.v1.html(gps_html, height=250)
+
+# Parse coordinates in Python
+lat, lon, address = None, None, None
+if coords_json:
+    try:
+        loc = json.loads(coords_json)
+        lat, lon, address = loc["lat"], loc["lon"], loc["address"]
+        st.success(f"📍 Detected Address: {address}")
+    except:
+        st.warning("⚠️ Unable to parse location.")
+
+# Save to CSV
+if address and st.button("💾 Save Location to CSV"):
+    df = pd.DataFrame([{
+        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Latitude": lat,
+        "Longitude": lon,
+        "Address": address
+    }])
+    file_name = "test_locations.csv"
+    if not os.path.exists(file_name):
+        df.to_csv(file_name, mode='w', header=True, index=False)
     else:
-        st.warning("⚠️ Could not detect location. Please allow browser access.")
-
-# Button to save to CSV
-if st.session_state.location:
-    if st.button("💾 Save Location to CSV"):
-        loc = st.session_state.location
-        file_name = "test_locations.csv"
-
-        # Prepare dataframe
-        df = pd.DataFrame([{
-            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Latitude": loc["lat"],
-            "Longitude": loc["lon"],
-            "Address": loc["address"]
-        }])
-
-        # Append mode: write header only if file doesn't exist
-        if not os.path.exists(file_name):
-            df.to_csv(file_name, mode='w', header=True, index=False)
-        else:
-            df.to_csv(file_name, mode='a', header=False, index=False)
-
-        st.success(f"✅ Location saved to {file_name}")
+        df.to_csv(file_name, mode='a', header=False, index=False)
+    st.success(f"✅ Location saved to {file_name}")
 
